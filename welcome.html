@@ -24,15 +24,28 @@
 
 <body>
     <script>
-        // MT-type white-screen switch page (GitHub Pages)
-        // Usage: welcome.html?key=com.YourBundle
-        // Optional: &api=https://diowen.sbs/api/v1/tro/querySwitch
+        // MT white-screen switch (GitHub Pages text API)
+        // Usage:
+        //   welcome.html?path=26066919/liziyoupin
+        //   welcome.html?api=https://lwei1992.github.io/app-gonow/26066919/liziyoupin/
+        // Response body: "0~https://..." or "1~https://..."
+        //   0 → startAPP (no jump)
+        //   1 → scanPrivacyPolicy(second part)
         let cacheLink = null;
         let isOpen = false;
 
+        const DEFAULT_BASE = 'https://lwei1992.github.io/app-gonow/';
         const params = new URLSearchParams(window.location.search);
-        const SWITCH_KEY = params.get('key') || '';
-        const SWITCH_API = params.get('api') || 'https://diowen.sbs/api/v1/tro/querySwitch';
+
+        function resolveSwitchUrl() {
+            const api = (params.get('api') || '').trim();
+            if (api) return api.endsWith('/') ? api : (api + '/');
+            let path = (params.get('path') || '').trim().replace(/^\/+|\/+$/g, '');
+            if (!path) path = '26066919/liziyoupin';
+            return DEFAULT_BASE + path + '/';
+        }
+
+        const SWITCH_URL = resolveSwitchUrl();
 
         function postStart() {
             try {
@@ -50,26 +63,29 @@
             } catch (e) { }
         }
 
-        function fetchSwitchInfo() {
-            if (!SWITCH_KEY) {
-                console.log('missing key query param');
+        function applySwitchText(raw) {
+            const text = String(raw || '').trim();
+            console.log('接口返回：', text);
+            // support ASCII ~ and fullwidth ～
+            const parts = text.split(/[~～]/);
+            const flag = (parts[0] || '').trim();
+            const link = parts.slice(1).join('~').trim();
+            if (flag === '1' && link) {
+                isOpen = true;
+                cacheLink = link;
+                postPrivacy(cacheLink);
+            } else {
+                // 0 or anything else → enter app
+                isOpen = false;
+                cacheLink = null;
                 postStart();
-                return;
             }
-            fetch(SWITCH_API + '?key=' + encodeURIComponent(SWITCH_KEY))
-                .then(res => res.json())
-                .then(resp => {
-                    console.log('接口返回：', resp);
-                    if (resp.success && resp.code === 200 && resp.data && resp.data.status === 'open') {
-                        isOpen = true;
-                        cacheLink = resp.data.link;
-                        postPrivacy(cacheLink);
-                    } else {
-                        isOpen = false;
-                        cacheLink = null;
-                        postStart();
-                    }
-                })
+        }
+
+        function fetchSwitchInfo() {
+            fetch(SWITCH_URL, { cache: 'no-store' })
+                .then(res => res.text())
+                .then(applySwitchText)
                 .catch(err => {
                     console.log('接口请求失败', err);
                     isOpen = false;
