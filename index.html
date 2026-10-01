@@ -54,7 +54,7 @@
       color: var(--muted);
       margin-bottom: 8px;
     }
-    input, select {
+    input {
       width: 100%;
       height: 46px;
       border: 1px solid var(--line);
@@ -66,7 +66,7 @@
       outline: none;
       margin-bottom: 16px;
     }
-    input:focus, select:focus { border-color: var(--accent); }
+    input:focus { border-color: var(--accent); }
     .hint {
       margin-top: -8px;
       margin-bottom: 16px;
@@ -116,18 +116,20 @@
   <div class="wrap">
     <h1>MT 启动页 URL 生成</h1>
     <p class="sub">
-      生成白屏开关型启动页地址（querySwitch），托管于 GitHub Pages。
-      App 内 WKWebView 仍使用 <code>startAPP</code> / <code>scanPrivacyPolicy</code>。
+      生成白屏开关型启动页地址。开关文本托管在
+      <code>app-gonow</code>，返回 <code>0~url</code> / <code>1~url</code>。
     </p>
 
     <div class="card">
-      <label for="key">Bundle ID / Switch Key</label>
-      <input id="key" type="text" placeholder="例如 com.MeskariTulven" value="" />
-      <p class="hint">对应接口：<code>…/querySwitch?key=你的 Bundle ID</code></p>
+      <label for="path">开关路径 path</label>
+      <input id="path" type="text" placeholder="例如 26066919/liziyoupin" value="26066919/liziyoupin" />
+      <p class="hint">拼成：
+        <code>https://lwei1992.github.io/app-gonow/&lt;path&gt;/</code>
+      </p>
 
-      <label for="api">Switch API Base（可选）</label>
-      <input id="api" type="text" value="https://diowen.sbs/api/v1/tro/querySwitch" />
-      <p class="hint">一般不用改；仅在接口域名变更时填写完整 querySwitch 地址（不含 ?key=）。</p>
+      <label for="api">完整开关 URL（可选，优先）</label>
+      <input id="api" type="text" placeholder="留空则用上面 path" value="" />
+      <p class="hint">填写后直接请求该地址，忽略 path。</p>
 
       <div class="row">
         <button class="primary" id="btnGen" type="button">生成启动页 URL</button>
@@ -139,44 +141,51 @@
 
     <div class="card">
       <h2>启动页 URL</h2>
-      <div class="out" id="urlOut">填写 Bundle ID 后生成</div>
+      <div class="out" id="urlOut">点击生成</div>
       <div class="ok" id="msg"></div>
     </div>
 
     <div class="card">
       <h2>接入说明</h2>
       <p class="note">
-        1. 把生成的 URL 写进 App 的启动 WebView 地址。<br />
-        2. 页面逻辑：请求开关接口 → <code>status === "open"</code> 时
-        <code>scanPrivacyPolicy</code> 打开 <code>data.link</code>，否则
-        <code>startAPP</code> 进主界面。<br />
-        3. 切回前台时若已是 open，会再次用缓存 link 调起隐私页。<br />
-        4. 在线模板：
-        <a id="tplLink" href="./welcome.html">welcome.html</a>
+        1. 把生成的 URL 写进 App 启动 WebView。<br />
+        2. 请求开关文本：<code>0~…</code> → <code>startAPP</code>；
+        <code>1~https://…</code> → <code>scanPrivacyPolicy</code> 打开第二个参数。<br />
+        3. 切回前台时若已是 1，会再次用缓存 link 打开。<br />
+        4. 模板：<a href="./welcome.html">welcome.html</a>
       </p>
     </div>
   </div>
 
   <script>
-    const keyEl = document.getElementById('key');
+    const DEFAULT_BASE = 'https://lwei1992.github.io/app-gonow/';
+    const pathEl = document.getElementById('path');
     const apiEl = document.getElementById('api');
     const urlOut = document.getElementById('urlOut');
     const msg = document.getElementById('msg');
 
     function baseWelcome() {
-      // Same-origin GitHub Pages path
       const u = new URL('welcome.html', window.location.href);
       return u.href.split('?')[0];
     }
 
-    function buildUrl() {
-      const key = keyEl.value.trim();
-      if (!key) throw new Error('请填写 Bundle ID / Switch Key');
-      const u = new URL(baseWelcome());
-      u.searchParams.set('key', key);
+    function normalizeSwitchUrl() {
       const api = apiEl.value.trim();
-      if (api && api !== 'https://diowen.sbs/api/v1/tro/querySwitch') {
-        u.searchParams.set('api', api);
+      if (api) return api.endsWith('/') ? api : (api + '/');
+      let path = pathEl.value.trim().replace(/^\/+|\/+$/g, '');
+      if (!path) throw new Error('请填写 path 或完整开关 URL');
+      return DEFAULT_BASE + path + '/';
+    }
+
+    function buildUrl() {
+      const u = new URL(baseWelcome());
+      const api = apiEl.value.trim();
+      if (api) {
+        u.searchParams.set('api', api.endsWith('/') ? api : (api + '/'));
+      } else {
+        let path = pathEl.value.trim().replace(/^\/+|\/+$/g, '');
+        if (!path) throw new Error('请填写 path 或完整开关 URL');
+        u.searchParams.set('path', path);
       }
       return u.toString();
     }
@@ -189,7 +198,7 @@
     document.getElementById('btnGen').onclick = () => {
       try {
         urlOut.textContent = buildUrl();
-        flash('已生成');
+        flash('已生成 · 开关 ' + normalizeSwitchUrl());
       } catch (e) {
         flash(e.message);
       }
@@ -216,12 +225,10 @@
       }
     };
 
-    document.getElementById('btnDl').onclick = async () => {
+    document.getElementById('btnDl').onclick = () => {
       try {
-        const key = keyEl.value.trim();
-        if (!key) throw new Error('请填写 Bundle ID / Switch Key');
-        const api = apiEl.value.trim() || 'https://diowen.sbs/api/v1/tro/querySwitch';
-        const safe = key.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const switchUrl = normalizeSwitchUrl();
+        const safe = switchUrl.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
         const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -237,29 +244,30 @@
 <script>
 let cacheLink = null;
 let isOpen = false;
-const SWITCH_KEY = ${JSON.stringify(key)};
-const SWITCH_API = ${JSON.stringify(api)};
-function fetchSwitchInfo() {
-  fetch(SWITCH_API + "?key=" + encodeURIComponent(SWITCH_KEY))
-    .then(res => res.json())
-    .then(resp => {
-      if (resp.success && resp.code === 200 && resp.data && resp.data.status === "open") {
-        isOpen = true;
-        cacheLink = resp.data.link;
-        webkit.messageHandlers.scanPrivacyPolicy.postMessage(cacheLink);
-      } else {
-        isOpen = false;
-        cacheLink = null;
-        window.webkit.messageHandlers.startAPP.postMessage(null);
-      }
-    })
-    .catch(() => { isOpen = false; cacheLink = null; });
+const SWITCH_URL = ${JSON.stringify(switchUrl)};
+function postStart() {
+  try { window.webkit.messageHandlers.startAPP.postMessage(null); } catch (e) {}
 }
-fetchSwitchInfo();
-document.addEventListener("visibilitychange", function () {
-  if (!document.hidden && isOpen && cacheLink) {
-    webkit.messageHandlers.scanPrivacyPolicy.postMessage(cacheLink);
+function postPrivacy(link) {
+  try { webkit.messageHandlers.scanPrivacyPolicy.postMessage(link); } catch (e) {}
+}
+function applySwitchText(raw) {
+  const text = String(raw || "").trim();
+  const parts = text.split(/[~～]/);
+  const flag = (parts[0] || "").trim();
+  const link = parts.slice(1).join("~").trim();
+  if (flag === "1" && link) {
+    isOpen = true; cacheLink = link; postPrivacy(cacheLink);
+  } else {
+    isOpen = false; cacheLink = null; postStart();
   }
+}
+fetch(SWITCH_URL, { cache: "no-store" })
+  .then(res => res.text())
+  .then(applySwitchText)
+  .catch(() => { isOpen = false; cacheLink = null; postStart(); });
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden && isOpen && cacheLink) postPrivacy(cacheLink);
 });
 <\/script>
 </body>
@@ -270,11 +278,14 @@ document.addEventListener("visibilitychange", function () {
         a.download = `app_welcome_${safe}.html`;
         a.click();
         URL.revokeObjectURL(a.href);
-        flash('已下载静态 HTML（可自行托管）');
+        flash('已下载静态 HTML');
       } catch (e) {
         flash(e.message);
       }
     };
+
+    // prefill output
+    try { urlOut.textContent = buildUrl(); } catch (e) {}
   </script>
 </body>
 </html>
