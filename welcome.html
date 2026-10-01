@@ -90,7 +90,8 @@
                     console.log('接口请求失败', err);
                     isOpen = false;
                     cacheLink = null;
-                    postStart();
+                    // MT: stay on white page, do not startAPP; retry shortly
+                    setTimeout(fetchSwitchInfo, 2000);
                 });
         }
 
